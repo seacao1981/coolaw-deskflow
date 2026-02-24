@@ -298,16 +298,36 @@ class HNSWIndex:
         if len(self._label_to_id) == 0:
             return []
 
-        # Set search accuracy - ensure ef is large enough
-        ef_search = max(ef_search, top_k * 2)
+        # Limit top_k to available items
+        available_items = len(self._label_to_id)
+        top_k = min(top_k, available_items)
+
+        if top_k <= 0:
+            return []
+
+        # Set search accuracy - ensure ef is large enough based on M parameter
+        m_value = self._index.M if hasattr(self._index, 'M') else 32
+        ef_search = max(ef_search, top_k * 2, m_value * 2)
         self._index.set_ef(ef_search)
 
         # Generate query embedding
         query_emb = self.embed([query])[0]
 
         # Search - get more candidates for re-ranking
-        rerank_candidates = max(top_k * 3, 10)  # Minimum 10 candidates
-        labels, distances = self._index.knn_query(query_emb.reshape(1, -1), k=rerank_candidates)
+        # Limit candidates to available items to prevent hnswlib error
+        rerank_candidates = min(max(top_k * 3, 10), available_items)
+
+        try:
+            labels, distances = self._index.knn_query(query_emb.reshape(1, -1), k=rerank_candidates)
+        except RuntimeError as e:
+            # Handle "ef or M is too small" error by reducing k
+            if "contiguous 2D array" in str(e):
+                logger.warning("hnsw_query_failed", error=str(e), reason="reducing_k")
+                # Fallback: use a smaller k that's guaranteed to work
+                safe_k = min(available_items, max(5, m_value))
+                labels, distances = self._index.knn_query(query_emb.reshape(1, -1), k=safe_k)
+            else:
+                raise
 
         # Format results
         results = []
@@ -365,7 +385,7 @@ class HNSWIndex:
             # Combine with original scores
             reranked = []
             for (item_id, orig_score), new_score in zip(results, scores):
-                # Weighted combination
+                # Weighted combinations
                 combined_score = 0.3 * orig_score + 0.7 * float(new_score)
                 reranked.append((item_id, combined_score))
 
