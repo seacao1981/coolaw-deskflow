@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coolaw DeskFlow - Prototype v1.0</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            code: ['"Fira Code"', 'monospace'],
+            sans: ['"Fira Sans"', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            'bg-deep': '#0B0F1A',
+            'bg-base': '#0F172A',
+            'surface': '#1E293B',
+            'surface-el': '#334155',
+            'accent': '#22C55E',
+            'accent-hover': '#16A34A',
+            'accent-dim': 'rgba(34,197,94,0.1)',
+            'text-p': '#F8FAFC',
+            'text-s': '#94A3B8',
+            'text-m': '#64748B',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Fira Sans', sans-serif; background: #0F172A; color: #F8FAFC; overflow: hidden; height: 100vh; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748B; }
+    .sidebar-item { transition: all 200ms ease; }
+    .sidebar-item:hover { background: #1E293B; }
+    .sidebar-item.active { background: rgba(34,197,94,0.1); border-left: 2px solid #22C55E; }
+    .sidebar-item.active .sidebar-icon { color: #22C55E; }
+    .sidebar-item.active .sidebar-label { color: #F8FAFC; }
+    .view { display: none; }
+    .view.active { display: flex; }
+    .card-hover { transition: border-color 200ms ease; }
+    .card-hover:hover { border-color: #64748B; }
+    .btn-primary { transition: background-color 200ms ease; }
+    .btn-primary:hover { background-color: #16A34A; }
+    .tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 4px; font-family: 'Fira Code', monospace; font-size: 11px; font-weight: 500; }
+    .pulse-dot { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+    .cursor-blink { animation: blink 1s infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+    .chat-input:focus { border-color: #22C55E; outline: none; box-shadow: 0 0 0 2px rgba(34,197,94,0.15); }
+    .tool-card { transition: all 200ms ease; }
+    .tool-card summary { cursor: pointer; list-style: none; }
+    .tool-card summary::-webkit-details-marker { display: none; }
+    .setting-input { background: #0F172A; color: #F8FAFC; padding: 10px 12px; border: 1px solid #334155; border-radius: 8px; font-family: 'Fira Sans', sans-serif; font-size: 14px; transition: border-color 200ms ease; width: 100%; }
+    .setting-input:focus { border-color: #22C55E; outline: none; box-shadow: 0 0 0 2px rgba(34,197,94,0.15); }
+  </style>
+</head>
+<body class="flex flex-col h-screen">
+
+  <!-- Title Bar -->
+  <div class="h-10 bg-bg-deep border-b border-surface flex items-center px-4 shrink-0" style="-webkit-app-region: drag;">
+    <div class="flex items-center gap-2">
+      <div class="w-3 h-3 rounded-full bg-red-500 cursor-pointer" style="-webkit-app-region: no-drag;"></div>
+      <div class="w-3 h-3 rounded-full bg-yellow-500 cursor-pointer" style="-webkit-app-region: no-drag;"></div>
+      <div class="w-3 h-3 rounded-full bg-green-500 cursor-pointer" style="-webkit-app-region: no-drag;"></div>
+    </div>
+    <span class="ml-4 text-text-s text-xs font-code">Coolaw DeskFlow</span>
+    <span class="ml-auto text-text-m text-xs">v0.1.0-prototype</span>
+  </div>
+
+  <!-- Main Layout -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- Sidebar -->
+    <aside id="sidebar" class="w-56 bg-bg-deep border-r border-surface flex flex-col shrink-0 transition-all duration-200">
+      <!-- Logo -->
+      <div class="px-4 py-4 border-b border-surface">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
+            <i data-lucide="brain" class="w-5 h-5 text-bg-deep"></i>
+          </div>
+          <div class="sidebar-text">
+            <div class="text-sm font-semibold font-code text-text-p">DeskFlow</div>
+            <div class="text-xs text-text-m">AI Agent Framework</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation -->
+      <nav class="flex-1 py-2 px-2 space-y-1">
+        <button class="sidebar-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer" data-view="chat" onclick="switchView('chat')">
+          <i data-lucide="message-square" class="sidebar-icon w-5 h-5 text-text-s"></i>
+          <span class="sidebar-label text-sm text-text-s">Chat</span>
+        </button>
+        <button class="sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer" data-view="skills" onclick="switchView('skills')">
+          <i data-lucide="puzzle" class="sidebar-icon w-5 h-5 text-text-s"></i>
+          <span class="sidebar-label text-sm text-text-s">Skills</span>
+        </button>
+        <button class="sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer" data-view="monitor" onclick="switchView('monitor')">
+          <i data-lucide="activity" class="sidebar-icon w-5 h-5 text-text-s"></i>
+          <span class="sidebar-label text-sm text-text-s">Monitor</span>
+        </button>
+        <button class="sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer" data-view="settings" onclick="switchView('settings')">
+          <i data-lucide="settings" class="sidebar-icon w-5 h-5 text-text-s"></i>
+          <span class="sidebar-label text-sm text-text-s">Settings</span>
+        </button>
+      </nav>
+
+      <!-- User Section -->
+      <div class="px-2 py-3 border-t border-surface">
+        <div class="flex items-center gap-3 px-3 py-2">
+          <div class="w-8 h-8 rounded-full bg-surface-el flex items-center justify-center">
+            <i data-lucide="user" class="w-4 h-4 text-text-s"></i>
+          </div>
+          <div class="sidebar-text flex-1 min-w-0">
+            <div class="text-sm text-text-p truncate">User</div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-accent pulse-dot"></span>
+              <span class="text-xs text-text-m">Online</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Content Area -->
+    <main class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- ========== CHAT VIEW ========== -->
+      <div id="view-chat" class="view active flex-1 flex flex-col">
+        <!-- Chat Header -->
+        <div class="h-14 border-b border-surface flex items-center px-6 shrink-0">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-surface flex items-center justify-center">
+              <i data-lucide="brain" class="w-4 h-4 text-accent"></i>
+            </div>
+            <div>
+              <div class="text-sm font-semibold font-code">DeskFlow Agent</div>
+              <div class="flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-accent"></span>
+                <span class="text-xs text-text-m">Online - claude-3.5-sonnet</span>
+              </div>
+            </div>
+          </div>
+          <div class="ml-auto flex items-center gap-2">
+            <button class="w-8 h-8 rounded-lg flex items-center justify-center text-text-s hover:bg-surface cursor-pointer transition-colors duration-200" title="New conversation">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+            </button>
+            <button class="w-8 h-8 rounded-lg flex items-center justify-center text-text-s hover:bg-surface cursor-pointer transition-colors duration-200" title="Conversation history">
+              <i data-lucide="history" class="w-4 h-4"></i>
+            </button>
+            <button class="w-8 h-8 rounded-lg flex items-center justify-center text-text-s hover:bg-surface cursor-pointer transition-colors duration-200" title="More options">
+              <i data-lucide="more-vertical" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Messages Area -->
+        <div class="flex-1 overflow-y-auto px-6 py-4 space-y-4" id="chat-messages">
+
+          <!-- AI Welcome Message -->
+          <div class="flex gap-3 max-w-3xl">
+            <div class="w-8 h-8 rounded-lg bg-surface flex items-center justify-center shrink-0 mt-1">
+              <i data-lucide="brain" class="w-4 h-4 text-accent"></i>
+            </div>
+            <div class="flex-1">
+              <div class="bg-surface border border-surface-el rounded-xl rounded-tl-sm px-4 py-3">
+                <p class="text-sm leading-relaxed">Hello! I'm <span class="font-code text-accent">DeskFlow Agent</span>, your self-evolving AI assistant.</p>
+                <p class="text-sm leading-relaxed mt-2 text-text-s">I can help you with code analysis, file management, web searches, and much more. What would you like to work on?</p>
+              </div>
+              <span class="text-xs text-text-m mt-1 inline-block">14:30</span>
+            </div>
+          </div>
+
+          <!-- User Message -->
+          <div class="flex gap-3 max-w-3xl ml-auto flex-row-reverse">
+            <div class="w-8 h-8 rounded-full bg-surface-el flex items-center justify-center shrink-0 mt-1">
+              <i data-lucide="user" class="w-4 h-4 text-text-s"></i>
+            </div>
+            <div class="flex-1 flex flex-col items-end">
+              <div class="bg-accent/10 border border-accent/20 rounded-xl rounded-tr-sm px-4 py-3">
+                <p class="text-sm leading-relaxed">Help me analyze and refactor this Python function:</p>
+                <div class="mt-2 bg-bg-deep border border-surface rounded-lg px-3 py-2 font-code text-xs leading-relaxed">
+                  <span class="text-blue-400">def</span> <span class="text-yellow-300">process_data</span>(<span class="text-orange-300">data</span>):<br>
+                  &nbsp;&nbsp;<span class="text-blue-400">try</span>:<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;result = []<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;<span class="text-blue-400">for</span> i <span class="text-blue-400">in</span> data:<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="text-blue-400">if</span> i > <span class="text-green-400">0</span>:<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;result.append(i * <span class="text-green-400">2</span>)<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;<span class="text-blue-400">return</span> result<br>
+                  &nbsp;&nbsp;<span class="text-blue-400">except</span>:<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;<span class="text-blue-400">return</span> <span class="text-orange-300">None</span>
+                </div>
+              </div>
+              <span class="text-xs text-text-m mt-1">14:31</span>
+            </div>
+          </div>
+
+          <!-- AI Response with Tool Execution -->
+          <div class="flex gap-3 max-w-3xl">
+            <div class="w-8 h-8 rounded-lg bg-surface flex items-center justify-center shrink-0 mt-1">
+              <i data-lucide="brain" class="w-4 h-4 text-accent"></i>
+            </div>
+            <div class="flex-1">
+              <div class="bg-surface border border-surface-el rounded-xl rounded-tl-sm px-4 py-3">
+                <p class="text-sm leading-relaxed">I'll analyze this code. Let me check for issues:</p>
+
+                <!-- Tool Execution Card -->
+                <details class="tool-card mt-3 bg-bg-deep border border-surface rounded-lg overflow-hidden" open>
+                  <summary class="flex items-center gap-2 px-3 py-2 hover:bg-surface/50 transition-colors duration-200">
+                    <i data-lucide="check-circle" class="w-4 h-4 text-accent"></i>
+                    <span class="text-xs font-code text-accent">analyze_code</span>
+                    <span class="tag bg-accent/10 text-accent ml-auto">completed 0.8s</span>
+                  </summary>
+                  <div class="px-3 py-2 border-t border-surface text-xs font-code text-text-s">
+                    Found 3 issues: bare except, no type hints, list comprehension opportunity
+                  </div>
+                </details>
+
+                <div class="mt-3 space-y-2">
+                  <p class="text-sm leading-relaxed">I found <span class="font-code text-amber-400">3 issues</span>:</p>
+                  <ol class="text-sm text-text-s leading-relaxed list-decimal list-inside space-y-1">
+                    <li><span class="text-red-400 font-code">Bare except</span> - catches all exceptions silently</li>
+                    <li><span class="text-amber-400 font-code">No type hints</span> - reduces code clarity</li>
+                    <li><span class="text-blue-400 font-code">List comprehension</span> - can simplify the loop</li>
+                  </ol>
+                </div>
+
+                <p class="text-sm leading-relaxed mt-3">Here's the refactored version:</p>
+
+                <div class="mt-2 bg-bg-deep border border-surface rounded-lg px-3 py-2 font-code text-xs leading-relaxed relative group">
+                  <button class="absolute top-2 right-2 w-7 h-7 rounded flex items-center justify-center text-text-m hover:text-text-p hover:bg-surface cursor-pointer opacity-0 group-hover:opacity-100 transition-all duration-200" title="Copy code">
+                    <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <span class="text-blue-400">from</span> <span class="text-green-400">typing</span> <span class="text-blue-400">import</span> Optional<br><br>
+                  <span class="text-blue-400">def</span> <span class="text-yellow-300">process_data</span>(<span class="text-orange-300">data</span>: <span class="text-green-400">list</span>[<span class="text-green-400">int</span>]) -> Optional[<span class="text-green-400">list</span>[<span class="text-green-400">int</span>]]:<br>
+                  &nbsp;&nbsp;<span class="text-text-m">"""Filter positive numbers and double them."""</span><br>
+                  &nbsp;&nbsp;<span class="text-blue-400">try</span>:<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;<span class="text-blue-400">return</span> [x * <span class="text-green-400">2</span> <span class="text-blue-400">for</span> x <span class="text-blue-400">in</span> data <span class="text-blue-400">if</span> x > <span class="text-green-400">0</span>]<br>
+                  &nbsp;&nbsp;<span class="text-blue-400">except</span> <span class="text-red-400">TypeError</span> <span class="text-blue-400">as</span> e:<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;<span class="text-green-400">logger</span>.error(<span class="text-amber-300">f"Invalid data type: {e}"</span>)<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;<span class="text-blue-400">return</span> <span class="text-orange-300">None</span>
+                </div>
+              </div>
+              <span class="text-xs text-text-m mt-1 inline-block">14:32</span>
+            </div>
+          </div>
+
+          <!-- AI Streaming (simulated) -->
+          <div class="flex gap-3 max-w-3xl" id="streaming-msg">
+            <div class="w-8 h-8 rounded-lg bg-surface flex items-center justify-center shrink-0 mt-1">
+              <i data-lucide="brain" class="w-4 h-4 text-accent"></i>
+            </div>
+            <div class="flex-1">
+              <div class="bg-surface border border-surface-el rounded-xl rounded-tl-sm px-4 py-3">
+                <p class="text-sm leading-relaxed" id="streaming-text">Key improvements made</p>
+                <span class="inline-block w-2 h-4 bg-accent cursor-blink ml-0.5 align-middle"></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Input Area -->
+        <div class="border-t border-surface px-6 py-4 shrink-0">
+          <div class="max-w-3xl mx-auto">
+            <div class="flex items-end gap-3">
+              <div class="flex-1 relative">
+                <textarea
+                  class="chat-input w-full bg-surface border border-surface-el rounded-xl px-4 py-3 text-sm resize-none font-sans text-text-p placeholder:text-text-m"
+                  rows="1"
+                  placeholder="Type a message... (Shift+Enter for new line)"
+                  style="min-height: 44px; max-height: 160px;"
+                ></textarea>
+                <div class="absolute bottom-2 left-3 flex items-center gap-1">
+                  <button class="w-7 h-7 rounded-lg flex items-center justify-center text-text-m hover:text-text-s hover:bg-surface-el cursor-pointer transition-colors duration-200" title="Attach file">
+                    <i data-lucide="paperclip" class="w-4 h-4"></i>
+                  </button>
+                  <button class="w-7 h-7 rounded-lg flex items-center justify-center text-text-m hover:text-text-s hover:bg-surface-el cursor-pointer transition-colors duration-200" title="Select tool">
+                    <i data-lucide="wrench" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+              <button class="btn-primary w-10 h-10 rounded-xl bg-accent flex items-center justify-center cursor-pointer shrink-0" title="Send message">
+                <i data-lucide="arrow-up" class="w-5 h-5 text-bg-deep"></i>
+              </button>
+              <button class="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center cursor-pointer shrink-0 hover:bg-red-500/30 transition-colors duration-200" title="Stop generation">
+                <i data-lucide="square" class="w-4 h-4 text-red-400"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== SKILLS VIEW ========== -->
+      <div id="view-skills" class="view flex-1 flex flex-col">
+        <!-- Skills Header -->
+        <div class="h-14 border-b border-surface flex items-center px-6 shrink-0">
+          <h1 class="text-lg font-semibold font-code">Skills</h1>
+          <div class="ml-6 flex items-center gap-2">
+            <button class="px-3 py-1.5 rounded-lg text-xs font-medium bg-accent/10 text-accent cursor-pointer">All</button>
+            <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-text-s hover:bg-surface cursor-pointer transition-colors duration-200">System</button>
+            <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-text-s hover:bg-surface cursor-pointer transition-colors duration-200">User</button>
+            <button class="px-3 py-1.5 rounded-lg text-xs font-medium text-text-s hover:bg-surface cursor-pointer transition-colors duration-200">Auto-gen</button>
+          </div>
+          <div class="ml-auto flex items-center gap-3">
+            <div class="relative">
+              <i data-lucide="search" class="w-4 h-4 text-text-m absolute left-3 top-1/2 -translate-y-1/2"></i>
+              <input type="text" placeholder="Search skills..." class="setting-input pl-9 py-1.5 text-sm w-48" />
+            </div>
+            <button class="btn-primary px-3 py-1.5 rounded-lg bg-accent text-bg-deep text-sm font-medium flex items-center gap-1.5 cursor-pointer">
+              <i data-lucide="download" class="w-4 h-4"></i>
+              Install
+            </button>
+          </div>
+        </div>
+
+        <!-- Skills Grid -->
+        <div class="flex-1 overflow-y-auto p-6">
+          <div class="grid grid-cols-3 gap-4 max-w-5xl">
+
+            <!-- Skill Card 1 -->
+            <div class="card-hover bg-surface border border-surface-el rounded-xl p-4 cursor-pointer">
+              <div class="flex items-start justify-between">
+                <div class="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                  <i data-lucide="globe" class="w-5 h-5 text-blue-400"></i>
+                </div>
+                <span class="w-2 h-2 rounded-full bg-accent mt-1" title="Active"></span>
+              </div>
+              <h3 class="text-sm font-semibold font-code mt-3">web_search</h3>
+              <p class="text-xs text-text-s mt-1 leading-relaxed">Search the web using DuckDuckGo or Google APIs</p>
+              <div class="flex items-center gap-2 mt-3">
+                <span class="tag bg-blue-500/10 text-blue-400">System</span>
+                <span class="text-xs text-text-m">v1.2.0</span>
+              </div>
+            </div>
+
+            <!-- Skill Card 2 -->
+            <div class="card-hover bg-surface border border-surface-el rounded-xl p-4 cursor-pointer">
+              <div class="flex items-start justify-between">
+                <div class="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                  <i data-lucide="folder-open" class="w-5 h-5 text-green-400"></i>
+                </div>
+                <span class="w-2 h-2 rounded-full bg-accent mt-1" title="Active"></span>
+              </div>
+              <h3 class="text-sm font-semibold font-code mt-3">file_manager</h3>
+              <p class="text-xs text-text-s mt-1 leading-relaxed">Read, write, and manage files on the local filesystem</p>
+              <div class="flex items-center gap-2 mt-3">
+                <span class="tag bg-blue-500/10 text-blue-400">System</span>
+                <span class="text-xs text-text-m">v1.0.0</span>
+              </div>
+            </div>
+
+            <!-- Skill Card 3 -->
+            <div class="card-hover bg-surface border border-surface-el rounded-xl p-4 cursor-pointer">
+              <div class="flex items-start justify-between">
+                <div class="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <i data-lucide="terminal" class="w-5 h-5 text-amber-400"></i>
+                </div>
+                <span class="w-2 h-2 rounded-full bg-accent mt-1" title="Active"></span>
+              </div>
+              <h3 class="text-sm font-semibold font-code mt-3">shell_executor</h3>
+              <p class="text-xs text-text-s mt-1 leading-relaxed">Execute shell commands with timeout and output capture</p>
+              <div class="flex items-center gap-2 mt-3">
+                <span class="tag bg-blue-500/10 text-blue-400">System</span>
+                <span class="text-xs text-text-m">v1.1.0</span>
+              </div>
+            </div>
+
+            <!-- Skill Card 4 -->
+            <div class="card-hover bg-surface border border-surface-el rounded-xl p-4 cursor-pointer">
+              <div class="flex items-start justify-between">
+                <div class="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
+                  <i data-lucide="code-2" class="w-5 h-5 text-purple-400"></i>
+                </div>
+                <span class="w-2 h-2 rounded-full bg-text-m mt-1" title="Inactive"></span>
+              </div>
+              <h3 class="text-sm font-semibold font-code mt-3">code_review</h3>
+              <p class="text-xs text-text-s mt-1 leading-relaxed">Automated code review with style and security checks</p>
+              <div class="flex items-center gap-2 mt-3">
+                <span class="tag bg-purple-500/10 text-purple-400">User</span>
+                <span class="text-xs text-text-m">v0.3.0</span>
+              </div>
+            </div>
+
+            <!-- Skill Card 5 -->
+            <div class="card-hover bg-surface border border-surface-el rounded-xl p-4 cursor-pointer">
+              <div class="flex items-start justify-between">
+                <div class="w-10 h-10 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                  <i data-lucide="file-text" class="w-5 h-5 text-cyan-400"></i>
+                </div>
+                <span class="w-2 h-2 rounded-full bg-accent mt-1" title="Active"></span>
+              </div>
+              <h3 class="text-sm font-semibold font-code mt-3">daily_report</h3>
+              <p class="text-xs text-text-s mt-1 leading-relaxed">Generate daily summary reports from activity logs</p>
+              <div class="flex items-center gap-2 mt-3">
+                <span class="tag bg-accent/10 text-accent">Auto-gen</span>
+                <span class="text-xs text-text-m">v0.1.0</span>
+              </div>
+            </div>
+
+            <!-- Skill Card 6 -->
+            <div class="card-hover bg-surface border border-surface-el rounded-xl p-4 cursor-pointer">
+              <div class="flex items-start justify-between">
+                <div class="w-10 h-10 rounded-lg bg-rose-500/10 flex items-center justify-center">
+                  <i data-lucide="shield" class="w-5 h-5 text-rose-400"></i>
+                </div>
+                <span class="w-2 h-2 rounded-full bg-accent mt-1" title="Active"></span>
+              </div>
+              <h3 class="text-sm font-semibold font-code mt-3">security_scan</h3>
+              <p class="text-xs text-text-s mt-1 leading-relaxed">Scan code for security vulnerabilities and secrets</p>
+              <div class="flex items-center gap-2 mt-3">
+                <span class="tag bg-accent/10 text-accent">Auto-gen</span>
+                <span class="text-xs text-text-m">v0.2.0</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== MONITOR VIEW ========== -->
+      <div id="view-monitor" class="view flex-1 flex flex-col">
+        <!-- Monitor Header -->
+        <div class="h-14 border-b border-surface flex items-center px-6 shrink-0">
+          <h1 class="text-lg font-semibold font-code">Monitor</h1>
+          <div class="ml-auto flex items-center gap-3">
+            <button class="px-3 py-1.5 rounded-lg text-sm text-text-s border border-surface-el hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-1.5">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              Refresh
+            </button>
+            <button class="px-3 py-1.5 rounded-lg text-sm text-text-s border border-surface-el hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-1.5">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              Export
+            </button>
+          </div>
+        </div>
+
+        <!-- Monitor Content -->
+        <div class="flex-1 overflow-y-auto p-6">
+          <div class="max-w-5xl space-y-6">
+
+            <!-- Status Cards Row -->
+            <div class="grid grid-cols-4 gap-4">
+              <!-- Agent Status -->
+              <div class="bg-surface border border-surface-el rounded-xl p-4">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-text-m font-medium uppercase tracking-wider">Agent</span>
+                  <span class="w-2 h-2 rounded-full bg-accent pulse-dot"></span>
+                </div>
+                <div class="mt-2 text-xl font-semibold font-code">Online</div>
+                <div class="text-xs text-text-s mt-1">Idle - waiting for input</div>
+              </div>
+
+              <!-- Memory Status -->
+              <div class="bg-surface border border-surface-el rounded-xl p-4">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-text-m font-medium uppercase tracking-wider">Memory</span>
+                  <i data-lucide="database" class="w-4 h-4 text-blue-400"></i>
+                </div>
+                <div class="mt-2 text-xl font-semibold font-code">1,234</div>
+                <div class="text-xs text-text-s mt-1">entries stored</div>
+              </div>
+
+              <!-- LLM Status -->
+              <div class="bg-surface border border-surface-el rounded-xl p-4">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-text-m font-medium uppercase tracking-wider">LLM</span>
+                  <i data-lucide="brain" class="w-4 h-4 text-accent"></i>
+                </div>
+                <div class="mt-2 text-xl font-semibold font-code">Claude</div>
+                <div class="text-xs text-text-s mt-1">3.5 Sonnet - 142 calls today</div>
+              </div>
+
+              <!-- Tools Status -->
+              <div class="bg-surface border border-surface-el rounded-xl p-4">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-text-m font-medium uppercase tracking-wider">Tools</span>
+                  <i data-lucide="wrench" class="w-4 h-4 text-amber-400"></i>
+                </div>
+                <div class="mt-2 text-xl font-semibold font-code">12</div>
+                <div class="text-xs text-text-s mt-1">available - 8 active</div>
+              </div>
+            </div>
+
+            <!-- Activity + Resource Row -->
+            <div class="grid grid-cols-5 gap-4">
+
+              <!-- Activity Timeline (3 cols) -->
+              <div class="col-span-3 bg-surface border border-surface-el rounded-xl">
+                <div class="px-4 py-3 border-b border-surface-el flex items-center justify-between">
+                  <span class="text-sm font-semibold font-code">Activity Timeline</span>
+                  <div class="flex items-center gap-2">
+                    <button class="px-2 py-1 rounded text-xs bg-accent/10 text-accent cursor-pointer">All</button>
+                    <button class="px-2 py-1 rounded text-xs text-text-m hover:bg-surface-el cursor-pointer transition-colors duration-200">LLM</button>
+                    <button class="px-2 py-1 rounded text-xs text-text-m hover:bg-surface-el cursor-pointer transition-colors duration-200">Tools</button>
+                    <button class="px-2 py-1 rounded text-xs text-text-m hover:bg-surface-el cursor-pointer transition-colors duration-200">Memory</button>
+                  </div>
+                </div>
+                <div class="divide-y divide-surface-el max-h-64 overflow-y-auto">
+                  <div class="px-4 py-2.5 flex items-center gap-3 hover:bg-bg-base/50 transition-colors duration-200">
+                    <span class="text-xs text-text-m font-code w-12 shrink-0">14:32</span>
+                    <i data-lucide="check-circle" class="w-4 h-4 text-accent shrink-0"></i>
+                    <span class="text-sm text-text-s">Tool <span class="font-code text-text-p">analyze_code</span> completed</span>
+                    <span class="tag bg-accent/10 text-accent ml-auto">0.8s</span>
+                  </div>
+                  <div class="px-4 py-2.5 flex items-center gap-3 hover:bg-bg-base/50 transition-colors duration-200">
+                    <span class="text-xs text-text-m font-code w-12 shrink-0">14:31</span>
+                    <i data-lucide="database" class="w-4 h-4 text-blue-400 shrink-0"></i>
+                    <span class="text-sm text-text-s">Memory stored: <span class="font-code text-text-p">conversation_context</span></span>
+                    <span class="tag bg-blue-500/10 text-blue-400 ml-auto">memory</span>
+                  </div>
+                  <div class="px-4 py-2.5 flex items-center gap-3 hover:bg-bg-base/50 transition-colors duration-200">
+                    <span class="text-xs text-text-m font-code w-12 shrink-0">14:31</span>
+                    <i data-lucide="brain" class="w-4 h-4 text-accent shrink-0"></i>
+                    <span class="text-sm text-text-s">LLM response: <span class="font-code text-text-p">1,247 tokens</span></span>
+                    <span class="tag bg-accent/10 text-accent ml-auto">2.1s</span>
+                  </div>
+                  <div class="px-4 py-2.5 flex items-center gap-3 hover:bg-bg-base/50 transition-colors duration-200">
+                    <span class="text-xs text-text-m font-code w-12 shrink-0">14:30</span>
+                    <i data-lucide="brain" class="w-4 h-4 text-accent shrink-0"></i>
+                    <span class="text-sm text-text-s">LLM request: <span class="font-code text-text-p">prompt assembled</span></span>
+                    <span class="tag bg-amber-500/10 text-amber-400 ml-auto">3,421 tok</span>
+                  </div>
+                  <div class="px-4 py-2.5 flex items-center gap-3 hover:bg-bg-base/50 transition-colors duration-200">
+                    <span class="text-xs text-text-m font-code w-12 shrink-0">14:28</span>
+                    <i data-lucide="database" class="w-4 h-4 text-blue-400 shrink-0"></i>
+                    <span class="text-sm text-text-s">Memory retrieved: <span class="font-code text-text-p">5 relevant entries</span></span>
+                    <span class="tag bg-blue-500/10 text-blue-400 ml-auto">12ms</span>
+                  </div>
+                  <div class="px-4 py-2.5 flex items-center gap-3 hover:bg-bg-base/50 transition-colors duration-200">
+                    <span class="text-xs text-text-m font-code w-12 shrink-0">14:25</span>
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 shrink-0"></i>
+                    <span class="text-sm text-text-s">Rate limit warning: <span class="font-code text-amber-400">80% quota used</span></span>
+                    <span class="tag bg-amber-500/10 text-amber-400 ml-auto">warning</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Resource Monitor (2 cols) -->
+              <div class="col-span-2 bg-surface border border-surface-el rounded-xl">
+                <div class="px-4 py-3 border-b border-surface-el">
+                  <span class="text-sm font-semibold font-code">Resources</span>
+                </div>
+                <div class="p-4 space-y-4">
+                  <!-- CPU -->
+                  <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs text-text-s">CPU</span>
+                      <span class="text-xs font-code text-accent">12%</span>
+                    </div>
+                    <div class="h-2 bg-bg-base rounded-full overflow-hidden">
+                      <div class="h-full bg-accent rounded-full" style="width: 12%;"></div>
+                    </div>
+                  </div>
+                  <!-- Memory -->
+                  <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs text-text-s">Memory</span>
+                      <span class="text-xs font-code text-blue-400">340 MB / 1 GB</span>
+                    </div>
+                    <div class="h-2 bg-bg-base rounded-full overflow-hidden">
+                      <div class="h-full bg-blue-500 rounded-full" style="width: 34%;"></div>
+                    </div>
+                  </div>
+                  <!-- Disk -->
+                  <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs text-text-s">Disk (data/)</span>
+                      <span class="text-xs font-code text-amber-400">1.2 GB</span>
+                    </div>
+                    <div class="h-2 bg-bg-base rounded-full overflow-hidden">
+                      <div class="h-full bg-amber-500 rounded-full" style="width: 24%;"></div>
+                    </div>
+                  </div>
+                  <!-- Token Usage -->
+                  <div class="pt-3 border-t border-surface-el">
+                    <div class="flex items-center justify-between mb-1.5">
+                      <span class="text-xs text-text-s">Token Usage (today)</span>
+                      <span class="text-xs font-code text-purple-400">45,230 / 100,000</span>
+                    </div>
+                    <div class="h-2 bg-bg-base rounded-full overflow-hidden">
+                      <div class="h-full bg-purple-500 rounded-full" style="width: 45%;"></div>
+                    </div>
+                  </div>
+                  <!-- Uptime -->
+                  <div class="pt-3 border-t border-surface-el">
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-text-s">Uptime</span>
+                      <span class="text-xs font-code text-text-p">3h 42m</span>
+                    </div>
+                    <div class="flex items-center justify-between mt-2">
+                      <span class="text-xs text-text-s">Errors (24h)</span>
+                      <span class="text-xs font-code text-accent">0</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Evolution Status -->
+            <div class="bg-surface border border-surface-el rounded-xl">
+              <div class="px-4 py-3 border-b border-surface-el flex items-center gap-2">
+                <i data-lucide="trending-up" class="w-4 h-4 text-accent"></i>
+                <span class="text-sm font-semibold font-code">Evolution Status</span>
+              </div>
+              <div class="grid grid-cols-3 divide-x divide-surface-el">
+                <div class="p-4">
+                  <div class="text-xs text-text-m uppercase tracking-wider">Last Self-Check</div>
+                  <div class="text-sm font-code mt-1">Today 06:00</div>
+                  <div class="flex items-center gap-1.5 mt-1">
+                    <i data-lucide="check-circle" class="w-3.5 h-3.5 text-accent"></i>
+                    <span class="text-xs text-accent">All healthy</span>
+                  </div>
+                </div>
+                <div class="p-4">
+                  <div class="text-xs text-text-m uppercase tracking-wider">Skills Auto-Generated</div>
+                  <div class="text-sm font-code mt-1">2 this week</div>
+                  <div class="text-xs text-text-s mt-1">daily_report, security_scan</div>
+                </div>
+                <div class="p-4">
+                  <div class="text-xs text-text-m uppercase tracking-wider">Error Auto-Fix Rate</div>
+                  <div class="text-sm font-code mt-1">67%</div>
+                  <div class="text-xs text-text-s mt-1">4 of 6 errors auto-resolved</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== SETTINGS VIEW ========== -->
+      <div id="view-settings" class="view flex-1 flex flex-col">
+        <!-- Settings Header -->
+        <div class="h-14 border-b border-surface flex items-center px-6 shrink-0">
+          <h1 class="text-lg font-semibold font-code">Settings</h1>
+        </div>
+
+        <!-- Settings Content -->
+        <div class="flex-1 flex overflow-hidden">
+          <!-- Settings Sidebar -->
+          <div class="w-48 border-r border-surface py-2 px-2 shrink-0">
+            <button class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm bg-accent/10 text-accent cursor-pointer" data-section="llm">LLM</button>
+            <button class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm text-text-s hover:bg-surface cursor-pointer transition-colors duration-200 mt-1" data-section="channels">Channels</button>
+            <button class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm text-text-s hover:bg-surface cursor-pointer transition-colors duration-200 mt-1" data-section="identity">Identity</button>
+            <button class="settings-nav w-full text-left px-3 py-2 rounded-lg text-sm text-text-s hover:bg-surface cursor-pointer transition-colors duration-200 mt-1" data-section="system">System</button>
+          </div>
+
+          <!-- Settings Form -->
+          <div class="flex-1 overflow-y-auto p-6">
+            <div class="max-w-xl space-y-6">
+              <div>
+                <h2 class="text-base font-semibold font-code">LLM Configuration</h2>
+                <p class="text-sm text-text-s mt-1">Configure your language model provider and API credentials.</p>
+              </div>
+
+              <!-- Provider -->
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-text-s block">Provider</label>
+                <select class="setting-input cursor-pointer">
+                  <option>Anthropic (Claude)</option>
+                  <option>OpenAI Compatible</option>
+                  <option>DashScope (Qwen)</option>
+                </select>
+              </div>
+
+              <!-- API Key -->
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-text-s block">API Key</label>
+                <div class="relative">
+                  <input type="password" value="sk-ant-xxxxxxxxxxxxxxxxxxxx" class="setting-input pr-20" />
+                  <button class="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 rounded text-xs text-text-m hover:text-text-p border border-surface-el hover:bg-surface cursor-pointer transition-colors duration-200">Show</button>
+                </div>
+                <p class="text-xs text-text-m">Stored securely in encrypted local config. Never sent to third parties.</p>
+              </div>
+
+              <!-- Model -->
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-text-s block">Model</label>
+                <select class="setting-input cursor-pointer">
+                  <option>claude-3-5-sonnet-20241022</option>
+                  <option>claude-3-opus-20240229</option>
+                  <option>claude-3-haiku-20240307</option>
+                </select>
+              </div>
+
+              <!-- Max Tokens -->
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-text-s block">Max Tokens</label>
+                <input type="number" value="4096" class="setting-input" />
+              </div>
+
+              <!-- Temperature -->
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-text-s block">Temperature</label>
+                <div class="flex items-center gap-3">
+                  <input type="range" min="0" max="100" value="70" class="flex-1 accent-accent cursor-pointer" />
+                  <span class="text-sm font-code text-text-p w-10 text-right">0.7</span>
+                </div>
+              </div>
+
+              <!-- Fallback -->
+              <div class="space-y-2">
+                <label class="text-sm font-medium text-text-s block">Fallback Provider</label>
+                <button class="w-full px-4 py-2.5 rounded-lg border border-dashed border-surface-el text-sm text-text-m hover:border-text-m hover:text-text-s cursor-pointer transition-colors duration-200 flex items-center justify-center gap-2">
+                  <i data-lucide="plus" class="w-4 h-4"></i>
+                  Add Fallback Provider
+                </button>
+              </div>
+
+              <!-- Actions -->
+              <div class="flex items-center gap-3 pt-4 border-t border-surface-el">
+                <button class="px-4 py-2 rounded-lg text-sm text-text-s border border-surface-el hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-2">
+                  <i data-lucide="play" class="w-4 h-4"></i>
+                  Test Connection
+                </button>
+                <button class="btn-primary px-4 py-2 rounded-lg bg-accent text-bg-deep text-sm font-medium cursor-pointer flex items-center gap-2">
+                  <i data-lucide="save" class="w-4 h-4"></i>
+                  Save
+                </button>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- Status Bar -->
+  <div class="h-7 bg-bg-deep border-t border-surface flex items-center px-4 text-xs text-text-m shrink-0">
+    <div class="flex items-center gap-1.5">
+      <span class="w-2 h-2 rounded-full bg-accent"></span>
+      <span>Connected</span>
+    </div>
+    <span class="mx-3 text-surface-el">|</span>
+    <span>Model: claude-3.5-sonnet</span>
+    <span class="mx-3 text-surface-el">|</span>
+    <span>Memory: 1,234 entries</span>
+    <span class="mx-3 text-surface-el">|</span>
+    <span>Tools: 12 available</span>
+    <span class="ml-auto font-code">v0.1.0</span>
+  </div>
+
+  <script>
+    // Initialize Lucide icons
+    lucide.createIcons();
+
+    // View switching
+    function switchView(viewName) {
+      // Hide all views
+      document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      // Show target view
+      document.getElementById('view-' + viewName).classList.add('active');
+      // Update sidebar
+      document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.view === viewName) {
+          item.classList.add('active');
+        }
+      });
+    }
+
+    // Simulate streaming text
+    const streamingTexts = [
+      'Key improvements made',
+      'Key improvements made: type hints added',
+      'Key improvements made: type hints added, specific exception handling',
+      'Key improvements made: type hints added, specific exception handling, list comprehension for cleaner code',
+      'Key improvements made: type hints added, specific exception handling, list comprehension for cleaner code, proper logging instead of silent failure.',
+    ];
+    let streamIndex = 0;
+    const streamEl = document.getElementById('streaming-text');
+    setInterval(() => {
+      if (streamIndex < streamingTexts.length) {
+        streamEl.textContent = streamingTexts[streamIndex];
+        streamIndex++;
+      }
+    }, 800);
+
+    // Auto-resize textarea
+    const textarea = document.querySelector('textarea');
+    if (textarea) {
+      textarea.addEventListener('input', function() {
+        this.style.height = '44px';
+        this.style.height = Math.min(this.scrollHeight, 160) + 'px';
+      });
+    }
+  </script>
+
+</body>
+</html>

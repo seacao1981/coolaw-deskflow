@@ -1,0 +1,8 @@
+{
+  "name": "anthropic_cookbook",
+  "description": "Skill from anthropic-cookbook",
+  "type": "user",
+  "version": "v0.1.0",
+  "source": "https://github.com/anthropics/anthropic-cookbook",
+  "installed_at": "2026-02-24T15:31:44.895600"
+}

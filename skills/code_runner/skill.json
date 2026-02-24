@@ -1,0 +1,9 @@
+{
+  "name": "Code Runner",
+  "description": "Execute Python code in sandbox",
+  "type": "utility",
+  "version": "v0.1.0",
+  "icon": "code",
+  "color": "rose",
+  "installed_at": "2026-02-24T15:45:29.810326"
+}

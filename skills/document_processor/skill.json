@@ -1,0 +1,9 @@
+{
+  "name": "Document Processor",
+  "description": "Process PDF, Word, and Excel documents",
+  "type": "utility",
+  "version": "v0.1.0",
+  "icon": "file-text",
+  "color": "cyan",
+  "installed_at": "2026-02-24T15:40:50.546853"
+}

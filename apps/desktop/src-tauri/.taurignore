@@ -1,0 +1,8 @@
+# Tauri ignore patterns
+node_modules/
+.git/
+.vscode/
+*.log
+.DS_Store
+src-tauri/target/
+dist/

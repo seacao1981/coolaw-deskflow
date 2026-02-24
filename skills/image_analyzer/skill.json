@@ -1,0 +1,9 @@
+{
+  "name": "Image Analyzer",
+  "description": "Analyze images using AI vision",
+  "type": "ai",
+  "version": "v0.1.0",
+  "icon": "image",
+  "color": "purple",
+  "installed_at": "2026-02-24T15:42:02.463356"
+}
