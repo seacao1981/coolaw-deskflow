@@ -8,7 +8,7 @@ import { useAppStore } from "./stores/appStore";
 import { useLocaleStore } from "./stores/localeStore";
 import ChatView from "./views/ChatView";
 import SkillsView from "./views/SkillsView";
-import MonitorView from "./views/MonitorView";
+import { MonitorView } from "./views/MonitorView";
 import SettingsView from "./views/SettingsView";
 
 function App() {

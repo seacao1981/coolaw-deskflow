@@ -21,6 +21,14 @@ interface SetupWizardProps {
   onComplete: () => void;
 }
 
+// StepContent 组件的 Props 类型
+interface StepContentProps {
+  step: number;
+  mode: SetupMode;
+  t: ReturnType<typeof useTranslation>["t"];
+  onComplete: (success: boolean) => void;
+}
+
 /**
  * 配置向导 - 提供快速配置 (3 步) 和完整向导 (8 步) 两种模式
  */
@@ -361,7 +369,7 @@ export function SetupWizard({ onComplete }: SetupWizardProps) {
 }
 
 // 步骤内容组件
-function StepContent({ step, mode, t, onComplete }: { step: number; mode: SetupMode; t: (key: string, fallback?: string) => string; onComplete: (success: boolean) => void }) {
+function StepContent({ step, mode, t, onComplete }: StepContentProps) {
   if (mode === "quick") {
     return <QuickStepContent step={step} t={t} onComplete={onComplete} />;
   }
@@ -369,7 +377,7 @@ function StepContent({ step, mode, t, onComplete }: { step: number; mode: SetupM
 }
 
 // 快速配置步骤内容
-function QuickStepContent({ step, t, onComplete }: { step: number; t: (key: string, fallback?: string) => string; onComplete: (success: boolean) => void }) {
+function QuickStepContent({ step, t, onComplete }: Omit<StepContentProps, "mode">) {
   switch (step) {
     case 1:
       return (
@@ -397,7 +405,7 @@ function QuickStepContent({ step, t, onComplete }: { step: number; t: (key: stri
 }
 
 // 完整向导步骤内容
-function FullStepContent({ step, t, onComplete }: { step: number; t: (key: string, fallback?: string) => string; onComplete: (success: boolean) => void }) {
+function FullStepContent({ step, t, onComplete }: Omit<StepContentProps, "mode">) {
   switch (step) {
     case 1:
       return (

@@ -10,7 +10,6 @@ import {
   CheckCircle,
   AlertTriangle,
   TrendingUp,
-  Cpu,
   Play,
   Square,
   Server,
@@ -48,74 +47,34 @@ interface Activity {
 interface ServiceStatus {
   running: boolean;
   pid?: number;
-  uptime?: number;
+  uptime_seconds?: number;
+  memory_mb?: number;
+  cpu_percent?: number;
   logFile?: string;
 }
 
-function formatUptime(seconds: number): string {
-  const hrs = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${hrs}h ${mins}m ${secs}s`;
+interface MonitorViewProps {
+  // Add props if needed
 }
 
-function getActivityIcon(type: Activity["type"]): string {
-  switch (type) {
-    case "llm_call":
-      return "brain";
-    case "tool_execution":
-      return "wrench";
-    case "memory_operation":
-      return "database";
-    case "system_event":
-      return "alert";
-    case "user_action":
-      return "check";
-    default:
-      return "info";
-  }
-}
-
-function getActivityTagColor(type: Activity["type"]): string {
-  switch (type) {
-    case "llm_call":
-      return "bg-accent/10 text-accent";
-    case "tool_execution":
-      return "bg-warning/10 text-warning";
-    case "memory_operation":
-      return "bg-info/10 text-info";
-    case "system_event":
-      return "bg-rose-500/10 text-rose-500";
-    case "user_action":
-      return "bg-green-500/10 text-green-500";
-    default:
-      return "bg-gray-500/10 text-gray-500";
-  }
-}
-
-/**
- * Monitor view with real-time system status and service control.
- */
-export default function MonitorView() {
+export function MonitorView({}: MonitorViewProps) {
   const { t } = useTranslation();
-  const serverUrl = useAppStore((s) => s.serverUrl);
+  const isConnected = useAppStore((s) => s.isConnected);
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [llmStats, setLlmStats] = useState<LLMStats | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [serviceActionLoading, setServiceActionLoading] = useState(false);
+  const [serviceLoading, setServiceLoading] = useState(false);
+  const [filter, setFilter] = useState<"all" | "llm" | "tools" | "memory">("all");
 
-  // Fetch status data
+  // Fetch system status
   const fetchStatus = useCallback(async () => {
     try {
       const [statusRes, llmRes, activityRes, serviceRes] = await Promise.all([
-        fetch(`${serverUrl}/api/monitor/status`),
-        fetch(`${serverUrl}/api/monitor/llm-stats`),
-        fetch(`${serverUrl}/api/monitor/activity`),
-        fetch(`${serverUrl}/api/monitor/service-status`),
+        fetch("http://127.0.0.1:8420/api/monitor/status"),
+        fetch("http://127.0.0.1:8420/api/monitor/llm-stats"),
+        fetch("http://127.0.0.1:8420/api/monitor/activity?limit=10"),
+        fetch("http://127.0.0.1:8420/api/monitor/service/status"),
       ]);
 
       if (statusRes.ok) {
@@ -137,345 +96,243 @@ export default function MonitorView() {
         const data = await serviceRes.json();
         setServiceStatus(data);
       }
-
-      setLastUpdated(new Date());
-      setError(null);
-    } catch (err) {
-      setError(t("common.error"));
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error("Failed to fetch status:", error);
     }
-  }, [t, serverUrl]);
-
-  // Service control actions
-  const handleStartService = async () => {
-    setServiceActionLoading(true);
-    try {
-      const response = await fetch(`${serverUrl}/api/monitor/service/start`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (response.ok) {
-        fetchStatus();
-      }
-    } catch (err) {
-      console.error("Failed to start service:", err);
-    } finally {
-      setServiceActionLoading(false);
-    }
-  };
-
-  const handleStopService = async () => {
-    setServiceActionLoading(true);
-    try {
-      const response = await fetch(`${serverUrl}/api/monitor/service/stop`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      if (response.ok) {
-        fetchStatus();
-      }
-    } catch (err) {
-      console.error("Failed to stop service:", err);
-    } finally {
-      setServiceActionLoading(false);
-    }
-  };
+  }, []);
 
   useEffect(() => {
     fetchStatus();
-    const interval = setInterval(fetchStatus, 3000);
+    const interval = setInterval(fetchStatus, 5000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
-  // WebSocket connection for real-time activity updates
-  useEffect(() => {
-    let ws: WebSocket | null = null;
-    let reconnectTimeout: ReturnType<typeof setTimeout>;
-
-    const connectWebSocket = () => {
-      try {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/api/monitor/ws/activity`;
-
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          console.log(t("monitor.websocketConnected"));
-        };
-
-        ws.onclose = () => {
-          console.log(t("monitor.websocketDisconnected"));
-          reconnectTimeout = setTimeout(connectWebSocket, 3000);
-        };
-
-        ws.onerror = (error) => {
-          console.error(t("monitor.websocketError"), error);
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-
-            if (message.type === 'new_activity' && message.activity) {
-              const newActivity: Activity = {
-                id: message.activity.id,
-                time: new Date(message.activity.timestamp).toLocaleTimeString(),
-                type: message.activity.type,
-                icon: getActivityIcon(message.activity.type),
-                text: message.activity.summary,
-                tag: message.activity.type,
-                tagColor: getActivityTagColor(message.activity.type),
-              };
-
-              setActivities((prev) => {
-                const first = prev[0];
-                if (first && first.id === newActivity.id) {
-                  return prev;
-                }
-                return [newActivity, ...prev].slice(0, 50);
-              });
-            }
-          } catch (err) {
-            console.error(t("monitor.parseMessageError"), err);
-          }
-        };
-      } catch (err) {
-        console.error(t("monitor.connectError"), err);
+  // Service control
+  const handleStartService = async () => {
+    setServiceLoading(true);
+    try {
+      const res = await fetch("http://127.0.0.1:8420/api/monitor/service/start", {
+        method: "POST",
+      });
+      if (res.ok) {
+        await fetchStatus();
       }
-    };
-
-    connectWebSocket();
-
-    return () => {
-      if (ws) {
-        ws.close();
-      }
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-    };
-  }, [t]);
-
-  const handleExport = () => {
-    const data = {
-      timestamp: new Date().toISOString(),
-      system: status,
-      llm: llmStats,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `deskflow-status-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Failed to start service:", error);
+    }
+    setServiceLoading(false);
   };
 
-  const filterButtons = [
-    { key: "all", label: t("monitor.filters.all") },
-    { key: "llm", label: t("monitor.filters.llm") },
-    { key: "tools", label: t("monitor.filters.tools") },
-    { key: "memory", label: t("monitor.filters.memory") },
-  ];
+  const handleStopService = async () => {
+    setServiceLoading(true);
+    try {
+      const res = await fetch("http://127.0.0.1:8420/api/monitor/service/stop", {
+        method: "POST",
+      });
+      if (res.ok) {
+        await fetchStatus();
+      }
+    } catch (error) {
+      console.error("Failed to stop service:", error);
+    }
+    setServiceLoading(false);
+  };
+
+  // Filter activities - fixed type comparison
+  const filteredActivities = activities.filter((activity) => {
+    if (filter === "all") return true;
+    // Map filter to activity type
+    const typeMap: Record<string, string> = {
+      llm: "llm_call",
+      tools: "tool_execution",
+      memory: "memory_operation",
+    };
+    return activity.type === typeMap[filter];
+  });
+
+  const formatUptime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    return `${h}h ${m}m`;
+  };
 
   return (
-    <div className="flex-1 flex flex-col">
-      {/* Header */}
-      <div className="h-14 border-b border-surface flex items-center px-6 shrink-0">
-        <h1 className="text-lg font-semibold font-code">{t("monitor.title")}</h1>
-        <div className="ml-auto flex items-center gap-3">
-          {lastUpdated && (
-            <span className="text-xs text-text-m">
-              {t("monitor.updated")}{lastUpdated.toLocaleTimeString()}
-            </span>
-          )}
-          <button
-            onClick={fetchStatus}
-            disabled={loading}
-            className="px-3 py-1.5 rounded-lg text-sm text-text-s border border-surface-el hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-1.5 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> {t("monitor.refresh")}
-          </button>
-          <button
-            onClick={handleExport}
-            className="px-3 py-1.5 rounded-lg text-sm text-text-s border border-surface-el hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-1.5"
-          >
-            <Download className="w-3.5 h-3.5" /> {t("monitor.export")}
-          </button>
+    <div className="flex-1 bg-bg-deep p-6 overflow-y-auto">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-bold font-code text-text-p">{t("monitor.title", "系统监控")}</h1>
+            <p className="text-sm text-text-m mt-0.5">
+              {t("monitor.updated", "更新于：")} {new Date().toLocaleTimeString()}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchStatus}
+              className="px-3 py-1.5 rounded-lg border border-surface-el text-text-s hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-4 h-4" />
+              {t("monitor.refresh", "刷新")}
+            </button>
+            <button
+              className="px-3 py-1.5 rounded-lg border border-surface-el text-text-s hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-1.5"
+            >
+              <Download className="w-4 h-4" />
+              {t("monitor.export", "导出")}
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
-        {loading && !status ? (
-          <div className="flex items-center justify-center h-64">
-            <RefreshCw className="w-8 h-8 text-text-m animate-spin" />
-          </div>
-        ) : error ? (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-red-500">
-            <p>{error}</p>
-          </div>
-        ) : (
-          <div className="max-w-5xl space-y-6">
-            {/* Service Control Card - NEW */}
-            <ServiceControlCard
-              serviceStatus={serviceStatus}
-              onStart={handleStartService}
-              onStop={handleStopService}
-              loading={serviceActionLoading}
-              t={t}
-            />
+        {/* Service Control Card */}
+        <div className="mb-6">
+          <ServiceControlCard
+            serviceStatus={serviceStatus}
+            onStart={handleStartService}
+            onStop={handleStopService}
+            loading={serviceLoading}
+            t={t}
+          />
+        </div>
 
-            {/* Status Cards */}
-            <div className="grid grid-cols-4 gap-4">
-              <StatusCard
-                label={t("monitor.agent")}
-                value={llmStats?.provider === "none" ? t("monitor.offline") : t("monitor.online")}
-                detail={llmStats?.model || t("monitor.noLlmConfigured")}
-                dotColor={llmStats?.provider === "none" ? "bg-text-m" : "bg-accent animate-pulse-dot"}
-              />
-              <StatusCard
-                label={t("monitor.memory")}
-                value={llmStats?.memory_count.toString() || "0"}
-                detail={t("monitor.entriesStored")}
-                icon={<Database className="w-4 h-4 text-info" />}
-              />
-              <StatusCard
-                label={t("monitor.llm")}
-                value={llmStats?.provider === "DashScope" ? "Qwen" : llmStats?.provider || "-"}
-                detail={llmStats?.model || t("monitor.notConfigured")}
-                icon={<Brain className="w-4 h-4 text-accent" />}
-              />
-              <StatusCard
-                label={t("monitor.tools")}
-                value={llmStats?.active_tools.toString() || "0"}
-                detail={t("monitor.available")}
-                icon={<Wrench className="w-4 h-4 text-warning" />}
-              />
-            </div>
+        {/* Status Cards */}
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          <StatusCard
+            label={t("monitor.agent", "Agent")}
+            value={isConnected ? t("monitor.online", "在线") : t("monitor.offline", "离线")}
+            detail={isConnected ? t("monitor.systemHealthy", "系统正常") : t("monitor.disconnected", "未连接")}
+            dotColor={isConnected ? "bg-accent" : "bg-text-m"}
+          />
+          <StatusCard
+            label={t("monitor.memory", "记忆")}
+            value={llmStats?.memory_count?.toString() || "-"}
+            detail={t("monitor.memoryEntries", "记忆条目")}
+            icon={<Database className="w-4 h-4 text-text-m" />}
+          />
+          <StatusCard
+            label={t("monitor.llm", "LLM")}
+            value={llmStats?.provider ? t("monitor.connected", "已连接") : t("monitor.notConfigured", "未配置")}
+            detail={llmStats?.model || "-"}
+            dotColor={llmStats?.provider ? "bg-accent" : "bg-text-m"}
+          />
+          <StatusCard
+            label={t("monitor.tools", "工具")}
+            value={llmStats?.active_tools?.toString() || "-"}
+            detail={t("monitor.skillsAvailable", "可用技能")}
+            icon={<Wrench className="w-4 h-4 text-text-m" />}
+          />
+        </div>
 
-            {/* Activity + Resources */}
-            <div className="grid grid-cols-5 gap-4">
-              {/* Timeline */}
-              <div className="col-span-3 bg-surface border border-surface-el rounded-xl">
-                <div className="px-4 py-3 border-b border-surface-el flex items-center justify-between">
-                  <span className="text-sm font-semibold font-code">{t("monitor.activityTimeline")}</span>
-                  <div className="flex items-center gap-2">
-                    {filterButtons.map((f) => (
-                      <button
-                        key={f.key}
-                        className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors duration-200 ${
-                          f.key === "all" ? "bg-accent/10 text-accent" : "text-text-m hover:bg-surface-el"
-                        }`}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="divide-y divide-surface-el max-h-64 overflow-y-auto">
-                  {activities.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-sm text-text-m">
-                      {t("monitor.noRecentActivity")}
-                    </div>
-                  ) : (
-                    activities.map((a, i) => (
-                      <div key={i} className="px-4 py-2.5 flex items-center gap-3 hover:bg-bg-base/50 transition-colors duration-200">
-                        <span className="text-xs text-text-m font-code w-12 shrink-0">{a.time}</span>
-                        {a.icon === "check" && <CheckCircle className="w-4 h-4 text-accent" />}
-                        {a.icon === "database" && <Database className="w-4 h-4 text-info" />}
-                        {a.icon === "brain" && <Brain className="w-4 h-4 text-accent" />}
-                        {a.icon === "wrench" && <Wrench className="w-4 h-4 text-warning" />}
-                        {a.icon === "warning" && <AlertTriangle className="w-4 h-4 text-warning" />}
-                        {a.icon === "alert" && <AlertTriangle className="w-4 h-4 text-rose-500" />}
-                        {a.icon === "info" && <CheckCircle className="w-4 h-4 text-info" />}
-                        <span className="text-sm text-text-s">{a.text}</span>
-                        <span className={`ml-auto inline-flex items-center px-2 py-0.5 rounded text-xs font-code font-medium ${a.tagColor}`}>
-                          {a.tag}
-                        </span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Resources */}
-              <div className="col-span-2 bg-surface border border-surface-el rounded-xl">
-                <div className="px-4 py-3 border-b border-surface-el flex items-center gap-2">
-                  <Cpu className="w-4 h-4 text-accent" />
-                  <span className="text-sm font-semibold font-code">{t("monitor.resources")}</span>
-                </div>
-                <div className="p-4 space-y-4">
-                  <ResourceBar
-                    label={t("monitor.cpu")}
-                    value={`${status?.cpu.percent.toFixed(1)}%`}
-                    percentage={status?.cpu.percent || 0}
-                    color="bg-accent"
-                  />
-                  <ResourceBar
-                    label={t("monitor.memory")}
-                    value={`${status?.memory.used_mb.toFixed(0)} MB / ${status?.memory.total_mb.toFixed(0)} MB`}
-                    percentage={status?.memory.percent || 0}
-                    color="bg-info"
-                  />
-                  <ResourceBar
-                    label={t("monitor.disk")}
-                    value={`${status?.disk.used_gb.toFixed(1)} GB / ${status?.disk.total_gb.toFixed(1)} GB`}
-                    percentage={status?.disk.percent || 0}
-                    color="bg-warning"
-                  />
-                  <div className="pt-3 border-t border-surface-el">
+        {/* Resource Monitor & Activity Timeline */}
+        <div className="grid grid-cols-3 gap-6">
+          {/* Resource Monitor */}
+          <div className="col-span-1">
+            <div className="bg-surface border border-surface-el rounded-xl p-4">
+              <h3 className="text-sm font-semibold text-text-p mb-4">{t("monitor.resources", "资源")}</h3>
+              {status && (
+                <>
+                  <div className="mb-4">
                     <ResourceBar
-                      label={t("monitor.dataDisk")}
-                      value={`${status?.data_disk.used_gb.toFixed(1)} GB / ${status?.data_disk.total_gb.toFixed(1)} GB`}
-                      percentage={status?.data_disk.percent || 0}
-                      color="bg-purple-500"
+                      label={t("monitor.cpu", "CPU")}
+                      value={`${status.cpu.percent}%`}
+                      percentage={status.cpu.percent}
+                      color="bg-accent"
                     />
                   </div>
-                  <div className="pt-3 border-t border-surface-el space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-text-s">{t("monitor.uptime")}</span>
-                      <span className="text-xs font-code text-text-p">
-                        {status ? formatUptime(status.uptime_seconds) : "-"}
-                      </span>
+                  <div className="mb-4">
+                    <ResourceBar
+                      label={t("monitor.memory", "内存")}
+                      value={`${Math.round(status.memory.percent)}%`}
+                      percentage={status.memory.percent}
+                      color="bg-info"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <ResourceBar
+                      label={t("monitor.disk", "磁盘")}
+                      value={`${Math.round(status.disk.percent)}%`}
+                      percentage={status.disk.percent}
+                      color="bg-warning"
+                    />
+                  </div>
+                  <div className="mb-4">
+                    <ResourceBar
+                      label={t("monitor.dataDisk", "数据盘")}
+                      value={`${Math.round(status.data_disk.percent)}%`}
+                      percentage={status.data_disk.percent}
+                      color="bg-success"
+                    />
+                  </div>
+                  <div className="pt-3 border-t border-surface-el">
+                    <div className="flex items-center justify-between text-xs text-text-s">
+                      <span>{t("monitor.uptime", "运行时间")}</span>
+                      <span className="font-code">{formatUptime(status.uptime_seconds)}</span>
                     </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs text-text-s">{t("monitor.platform")}</span>
-                      <span className="text-xs font-code text-text-p">{status?.platform || "-"}</span>
+                    <div className="flex items-center justify-between text-xs text-text-s mt-1">
+                      <span>{t("monitor.platform", "平台")}</span>
+                      <span className="font-code">{status.platform}</span>
                     </div>
                   </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Evolution */}
-            <div className="bg-surface border border-surface-el rounded-xl">
-              <div className="px-4 py-3 border-b border-surface-el flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-accent" />
-                <span className="text-sm font-semibold font-code">{t("monitor.evolutionStatus")}</span>
-              </div>
-              <div className="grid grid-cols-3 divide-x divide-surface-el">
-                <EvolutionCard
-                  label={t("monitor.lastSelfCheck")}
-                  value={status ? formatUptime(status.uptime_seconds) : "-"}
-                  detail={t("monitor.systemHealthy")}
-                  ok
-                />
-                <EvolutionCard
-                  label={t("monitor.memoryEntries")}
-                  value={llmStats?.memory_count.toString() || "0"}
-                  detail={t("monitor.conversationHistory")}
-                />
-                <EvolutionCard
-                  label={t("monitor.activeTools")}
-                  value={llmStats?.active_tools.toString() || "0"}
-                  detail={t("monitor.skillsAvailable")}
-                />
-              </div>
+                </>
+              )}
             </div>
           </div>
-        )}
+
+          {/* Activity Timeline */}
+          <div className="col-span-2">
+            <div className="bg-surface border border-surface-el rounded-xl p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-semibold text-text-p">{t("monitor.activityTimeline", "活动时间线")}</h3>
+                <div className="flex items-center gap-1">
+                  {(["all", "llm", "tools", "memory"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setFilter(f)}
+                      className={`px-2 py-1 rounded text-xs cursor-pointer transition-colors ${
+                        filter === f
+                          ? "bg-accent/20 text-accent"
+                          : "text-text-s hover:bg-surface"
+                      }`}
+                    >
+                      {t(`monitor.filters.${f}`, f)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {filteredActivities.length > 0 ? (
+                <div className="space-y-3">
+                  {filteredActivities.slice(0, 8).map((activity) => (
+                    <div key={activity.id} className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-surface-el flex items-center justify-center shrink-0">
+                        {activity.icon === "brain" && <Brain className="w-4 h-4 text-text-m" />}
+                        {activity.icon === "wrench" && <Wrench className="w-4 h-4 text-text-m" />}
+                        {activity.icon === "database" && <Database className="w-4 h-4 text-text-m" />}
+                        {activity.icon === "check" && <CheckCircle className="w-4 h-4 text-accent" />}
+                        {activity.icon === "alert" && <AlertTriangle className="w-4 h-4 text-warning" />}
+                        {activity.icon === "trending" && <TrendingUp className="w-4 h-4 text-info" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-text-p">{activity.text}</div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-text-s">{activity.time}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${activity.tagColor}`}>
+                            {activity.tag}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-text-m">
+                  <RefreshCw className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                  <p className="text-sm">{t("monitor.noRecentActivity", "暂无最近活动")}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -493,7 +350,7 @@ function ServiceControlCard({
   onStart: () => void;
   onStop: () => void;
   loading: boolean;
-  t: (key: string) => string;
+  t: ReturnType<typeof useTranslation>["t"];
 }) {
   const isRunning = serviceStatus?.running ?? false;
 
@@ -577,23 +434,11 @@ function ResourceBar({ label, value, percentage, color }: {
         <span className="text-xs text-text-s">{label}</span>
         <span className="text-xs font-code text-text-p">{value}</span>
       </div>
-      <div className="h-2 bg-bg-base rounded-full overflow-hidden">
-        <div className={`h-full rounded-full transition-all duration-500 ${color}`} style={{ width: `${percentage}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function EvolutionCard({ label, value, detail, ok }: {
-  label: string; value: string; detail: string; ok?: boolean;
-}) {
-  return (
-    <div className="p-4">
-      <div className="text-xs text-text-m uppercase tracking-wider">{label}</div>
-      <div className="text-sm font-code mt-1">{value}</div>
-      <div className="flex items-center gap-1.5 mt-1">
-        {ok && <CheckCircle className="w-3.5 h-3.5 text-accent" />}
-        <span className={`text-xs ${ok ? "text-accent" : "text-text-s"}`}>{detail}</span>
+      <div className="h-1.5 bg-bg-base rounded-full overflow-hidden">
+        <div
+          className={`h-full ${color} transition-all duration-300`}
+          style={{ width: `${Math.min(percentage, 100)}%` }}
+        />
       </div>
     </div>
   );

@@ -32,10 +32,9 @@ const RECOMMENDED_MODELS: Record<string, { id: string; note: string }[]> = {
 
 interface LLMSetupFormProps {
   onComplete?: (data: any) => void;
-  compact?: boolean;
 }
 
-export function LLMSetupForm({ onComplete, compact }: LLMSetupFormProps) {
+export function LLMSetupForm({ onComplete }: LLMSetupFormProps) {
   const { t } = useTranslation();
   const { llm, setLLMConfig } = useSetupConfigStore();
 
