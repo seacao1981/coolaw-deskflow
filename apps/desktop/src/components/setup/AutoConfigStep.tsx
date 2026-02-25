@@ -9,7 +9,7 @@ interface AutoConfigStepProps {
 
 export function AutoConfigStep({ onComplete }: AutoConfigStepProps) {
   const { t } = useTranslation();
-  const { llm, im, workspace, pythonPath, installDeps, selectedSkills } = useSetupConfigStore();
+  const { llm, im, workspace, installDeps } = useSetupConfigStore();
 
   const [status, setStatus] = useState<"idle" | "running" | "success" | "error">("idle");
   const [currentTask, setCurrentTask] = useState("");
