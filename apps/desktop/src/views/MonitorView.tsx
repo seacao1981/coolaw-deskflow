@@ -11,6 +11,10 @@ import {
   AlertTriangle,
   TrendingUp,
   Cpu,
+  Play,
+  Square,
+  Server,
+  FileText,
 } from "lucide-react";
 
 interface SystemStatus {
@@ -39,6 +43,13 @@ interface Activity {
   text: string;
   tag: string;
   tagColor: string;
+}
+
+interface ServiceStatus {
+  running: boolean;
+  pid?: number;
+  uptime?: number;
+  logFile?: string;
 }
 
 function formatUptime(seconds: number): string {
@@ -83,7 +94,7 @@ function getActivityTagColor(type: Activity["type"]): string {
 }
 
 /**
- * Monitor view with real-time system status.
+ * Monitor view with real-time system status and service control.
  */
 export default function MonitorView() {
   const { t } = useTranslation();
@@ -91,17 +102,20 @@ export default function MonitorView() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [llmStats, setLlmStats] = useState<LLMStats | null>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [serviceActionLoading, setServiceActionLoading] = useState(false);
 
   // Fetch status data
   const fetchStatus = useCallback(async () => {
     try {
-      const [statusRes, llmRes, activityRes] = await Promise.all([
+      const [statusRes, llmRes, activityRes, serviceRes] = await Promise.all([
         fetch(`${serverUrl}/api/monitor/status`),
         fetch(`${serverUrl}/api/monitor/llm-stats`),
         fetch(`${serverUrl}/api/monitor/activity`),
+        fetch(`${serverUrl}/api/monitor/service-status`),
       ]);
 
       if (statusRes.ok) {
@@ -119,6 +133,11 @@ export default function MonitorView() {
         setActivities(data.activities || []);
       }
 
+      if (serviceRes.ok) {
+        const data = await serviceRes.json();
+        setServiceStatus(data);
+      }
+
       setLastUpdated(new Date());
       setError(null);
     } catch (err) {
@@ -128,9 +147,43 @@ export default function MonitorView() {
     }
   }, [t, serverUrl]);
 
+  // Service control actions
+  const handleStartService = async () => {
+    setServiceActionLoading(true);
+    try {
+      const response = await fetch(`${serverUrl}/api/monitor/service/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (response.ok) {
+        fetchStatus();
+      }
+    } catch (err) {
+      console.error("Failed to start service:", err);
+    } finally {
+      setServiceActionLoading(false);
+    }
+  };
+
+  const handleStopService = async () => {
+    setServiceActionLoading(true);
+    try {
+      const response = await fetch(`${serverUrl}/api/monitor/service/stop`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (response.ok) {
+        fetchStatus();
+      }
+    } catch (err) {
+      console.error("Failed to stop service:", err);
+    } finally {
+      setServiceActionLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
-    // Poll every 3 seconds for status (WebSocket handles activity updates)
     const interval = setInterval(fetchStatus, 3000);
     return () => clearInterval(interval);
   }, [fetchStatus]);
@@ -142,7 +195,6 @@ export default function MonitorView() {
 
     const connectWebSocket = () => {
       try {
-        // Get WebSocket URL from current location
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}/api/monitor/ws/activity`;
 
@@ -154,7 +206,6 @@ export default function MonitorView() {
 
         ws.onclose = () => {
           console.log(t("monitor.websocketDisconnected"));
-          // Reconnect after 3 seconds
           reconnectTimeout = setTimeout(connectWebSocket, 3000);
         };
 
@@ -167,7 +218,6 @@ export default function MonitorView() {
             const message = JSON.parse(event.data);
 
             if (message.type === 'new_activity' && message.activity) {
-              // Add new activity to the beginning of the list
               const newActivity: Activity = {
                 id: message.activity.id,
                 time: new Date(message.activity.timestamp).toLocaleTimeString(),
@@ -179,12 +229,11 @@ export default function MonitorView() {
               };
 
               setActivities((prev) => {
-                // Avoid duplicates
                 const first = prev[0];
                 if (first && first.id === newActivity.id) {
                   return prev;
                 }
-                return [newActivity, ...prev].slice(0, 50); // Keep last 50
+                return [newActivity, ...prev].slice(0, 50);
               });
             }
           } catch (err) {
@@ -269,6 +318,15 @@ export default function MonitorView() {
           </div>
         ) : (
           <div className="max-w-5xl space-y-6">
+            {/* Service Control Card - NEW */}
+            <ServiceControlCard
+              serviceStatus={serviceStatus}
+              onStart={handleStartService}
+              onStop={handleStopService}
+              loading={serviceActionLoading}
+              t={t}
+            />
+
             {/* Status Cards */}
             <div className="grid grid-cols-4 gap-4">
               <StatusCard
@@ -418,6 +476,78 @@ export default function MonitorView() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Service Control Card Component
+function ServiceControlCard({
+  serviceStatus,
+  onStart,
+  onStop,
+  loading,
+  t,
+}: {
+  serviceStatus: ServiceStatus | null;
+  onStart: () => void;
+  onStop: () => void;
+  loading: boolean;
+  t: (key: string) => string;
+}) {
+  const isRunning = serviceStatus?.running ?? false;
+
+  return (
+    <div className="bg-surface border border-surface-el rounded-xl p-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isRunning ? 'bg-accent/10' : 'bg-surface-el'}`}>
+            <Server className={`w-5 h-5 ${isRunning ? 'text-accent' : 'text-text-m'}`} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold font-code text-text-p">
+              {t("monitor.service.title", "后端服务")}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-accent animate-pulse-dot' : 'bg-text-m'}`} />
+              <span className="text-xs text-text-m">
+                {isRunning ? t("monitor.service.running", "运行中") : t("monitor.service.stopped", "已停止")}
+              </span>
+              {serviceStatus?.pid && (
+                <span className="text-xs text-text-s font-code">
+                  PID: {serviceStatus.pid}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {!isRunning ? (
+            <button
+              onClick={onStart}
+              disabled={loading}
+              className="px-4 py-2 rounded-lg bg-accent text-bg-deep font-medium hover:bg-accent-hover cursor-pointer transition-colors duration-200 flex items-center gap-2 disabled:opacity-50"
+            >
+              <Play className="w-4 h-4" /> {t("monitor.service.start", "启动")}
+            </button>
+          ) : (
+            <button
+              onClick={onStop}
+              disabled={loading}
+              className="px-4 py-2 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-500 font-medium hover:bg-rose-500/30 cursor-pointer transition-colors duration-200 flex items-center gap-2 disabled:opacity-50"
+            >
+              <Square className="w-4 h-4" /> {t("monitor.service.stop", "停止")}
+            </button>
+          )}
+          {serviceStatus?.logFile && (
+            <button
+              className="px-3 py-2 rounded-lg border border-surface-el text-text-s hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-1.5"
+              title={t("monitor.service.viewLogs", "查看日志")}
+            >
+              <FileText className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

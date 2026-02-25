@@ -6,9 +6,11 @@ interface AppState {
   sidebarExpanded: boolean;
   serverUrl: string;
   isConnected: boolean;
+  setupCompleted: boolean;
   setCurrentView: (view: ViewName) => void;
   toggleSidebar: () => void;
   setConnected: (connected: boolean) => void;
+  setSetupCompleted: (completed: boolean) => void;
 }
 
 // 从环境变量读取后端 URL，默认本地地址
@@ -24,7 +26,9 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarExpanded: true,
   serverUrl: getBackendUrl(),
   isConnected: false,
+  setupCompleted: false,
   setCurrentView: (view) => set({ currentView: view }),
   toggleSidebar: () => set((s) => ({ sidebarExpanded: !s.sidebarExpanded })),
   setConnected: (connected) => set({ isConnected: connected }),
+  setSetupCompleted: (completed) => set({ setupCompleted: completed }),
 }));

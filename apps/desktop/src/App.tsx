@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { TitleBar } from "./components/layout/TitleBar";
 import { Sidebar } from "./components/layout/Sidebar";
 import { StatusBar } from "./components/layout/StatusBar";
+import { SetupWizard } from "./components/setup/SetupWizard";
 import { useAppStore } from "./stores/appStore";
 import { useLocaleStore } from "./stores/localeStore";
 import ChatView from "./views/ChatView";
@@ -13,7 +14,9 @@ import SettingsView from "./views/SettingsView";
 function App() {
   const currentView = useAppStore((s) => s.currentView);
   const serverUrl = useAppStore((s) => s.serverUrl);
+  const setupCompleted = useAppStore((s) => s.setupCompleted);
   const setConnected = useAppStore((s) => s.setConnected);
+  const setSetupCompleted = useAppStore((s) => s.setSetupCompleted);
   const { i18n } = useTranslation();
   const locale = useLocaleStore((s) => s.locale);
 
@@ -44,6 +47,16 @@ function App() {
 
     return () => clearInterval(interval);
   }, [serverUrl, setConnected]);
+
+  // 如果未完成配置，显示配置向导
+  if (!setupCompleted) {
+    return (
+      <div className="w-full h-screen overflow-hidden bg-bg-deep">
+        <TitleBar />
+        <SetupWizard onComplete={() => setSetupCompleted(true)} />
+      </div>
+    );
+  }
 
   return (
     <>

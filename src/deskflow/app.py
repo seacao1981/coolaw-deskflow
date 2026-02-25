@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from deskflow.api.middleware.rate_limit import RateLimitMiddleware
-from deskflow.api.routes import chat, config, health, identity, llm, memory, metrics, monitor, skills, user_profile, channels, insights, tracing, logs, channels_gateway, sessions, channels_feishu, channels_wecom, channels_dingtalk, channels_telegram, channels_media, orchestration
+from deskflow.api.routes import chat, config, health, identity, llm, memory, metrics, monitor, skills, user_profile, channels, insights, tracing, logs, channels_gateway, sessions, channels_feishu, channels_wecom, channels_dingtalk, channels_telegram, channels_media, orchestration, setup
 from deskflow.config import AppConfig, load_config
 from deskflow.core.agent import Agent
 from deskflow.core.identity import DefaultIdentity
@@ -230,5 +230,6 @@ def create_app() -> FastAPI:
     app.include_router(channels_telegram.router)
     app.include_router(channels_media.router)
     app.include_router(orchestration.router)
+    app.include_router(setup.router)
 
     return app

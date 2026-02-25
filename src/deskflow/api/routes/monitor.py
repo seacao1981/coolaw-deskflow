@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import platform
+import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import psutil
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 from deskflow.config import AppConfig, load_config
 from deskflow.observability.activity_logger import get_activity_logger, ActivityType, ActivityStatus
@@ -65,6 +69,57 @@ def get_connection_manager() -> ConnectionManager:
 
 # Start time for uptime calculation
 _start_time = time.time()
+
+# Service state management
+SERVICE_STATE_FILE = Path.home() / ".deskflow" / "service_state.json"
+PID_FILE = Path.home() / ".deskflow" / "service.pid"
+
+
+def _ensure_deskflow_dir() -> None:
+    """Ensure .deskflow directory exists."""
+    SERVICE_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+
+def _get_service_pid() -> int | None:
+    """Get service PID from file."""
+    if not PID_FILE.exists():
+        return None
+    try:
+        with open(PID_FILE, "r") as f:
+            pid = int(f.read().strip())
+            # Verify process is still running
+            if psutil.pid_exists(pid):
+                return pid
+    except (ValueError, IOError):
+        pass
+    return None
+
+
+def _save_service_pid(pid: int) -> None:
+    """Save service PID to file."""
+    _ensure_deskflow_dir()
+    with open(PID_FILE, "w") as f:
+        f.write(str(pid))
+
+
+def _clear_service_pid() -> None:
+    """Clear service PID file."""
+    if PID_FILE.exists():
+        PID_FILE.unlink()
+
+
+def _get_process_info(pid: int) -> dict[str, Any] | None:
+    """Get process information."""
+    try:
+        process = psutil.Process(pid)
+        return {
+            "status": process.status(),
+            "cpu_percent": process.cpu_percent(),
+            "memory_mb": round(process.memory_info().rss / 1024 / 1024, 2),
+            "create_time": datetime.fromtimestamp(process.create_time()).isoformat(),
+        }
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
 
 
 def _get_state() -> object:
@@ -125,6 +180,149 @@ async def get_system_status():
         "uptime_seconds": round(uptime_seconds, 2),
         "platform": platform.system(),
     }
+
+
+class ServiceStatusResponse(BaseModel):
+    """Service status response."""
+
+    running: bool
+    pid: int | None = None
+    uptime_seconds: float | None = None
+    memory_mb: float | None = None
+    cpu_percent: float | None = None
+
+
+@router.get("/service/status", response_model=ServiceStatusResponse)
+async def get_service_status():
+    """Get backend service status."""
+    pid = _get_service_pid()
+
+    if pid is None:
+        return ServiceStatusResponse(running=False)
+
+    process_info = _get_process_info(pid)
+    if process_info is None:
+        _clear_service_pid()
+        return ServiceStatusResponse(running=False)
+
+    # Calculate uptime
+    create_time = datetime.fromisoformat(process_info["create_time"])
+    uptime_seconds = (datetime.now() - create_time).total_seconds()
+
+    return ServiceStatusResponse(
+        running=True,
+        pid=pid,
+        uptime_seconds=round(uptime_seconds, 2),
+        memory_mb=process_info["memory_mb"],
+        cpu_percent=process_info["cpu_percent"],
+    )
+
+
+class ServiceStartResponse(BaseModel):
+    """Service start response."""
+
+    success: bool
+    message: str
+    pid: int | None = None
+
+
+@router.post("/service/start", response_model=ServiceStartResponse)
+async def start_service():
+    """Start the backend service."""
+    # Check if already running
+    pid = _get_service_pid()
+    if pid is not None:
+        return ServiceStartResponse(
+            success=True,
+            message="Service is already running",
+            pid=pid,
+        )
+
+    try:
+        # Get the current Python interpreter and script path
+        import sys
+        current_python = sys.executable
+        module_path = "-m deskflow serve"
+
+        # Start service in background
+        process = await asyncio.create_subprocess_exec(
+            current_python,
+            *module_path.split(),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            start_new_session=True,  # Start new session to detach from parent
+        )
+
+        # Save PID
+        if process.pid:
+            _save_service_pid(process.pid)
+            logger.info("service_started", pid=process.pid)
+
+            # Give it a moment to start up
+            await asyncio.sleep(1)
+
+            return ServiceStartResponse(
+                success=True,
+                message="Service started successfully",
+                pid=process.pid,
+            )
+
+        return ServiceStartResponse(
+            success=False,
+            message="Failed to start service",
+        )
+
+    except Exception as e:
+        logger.error("service_start_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to start service: {str(e)}")
+
+
+class ServiceStopResponse(BaseModel):
+    """Service stop response."""
+
+    success: bool
+    message: str
+
+
+@router.post("/service/stop", response_model=ServiceStopResponse)
+async def stop_service():
+    """Stop the backend service."""
+    pid = _get_service_pid()
+
+    if pid is None:
+        return ServiceStopResponse(
+            success=True,
+            message="Service is not running",
+        )
+
+    try:
+        process = psutil.Process(pid)
+        process.terminate()
+
+        # Wait for process to terminate
+        try:
+            process.wait(timeout=5)
+        except psutil.TimeoutExpired:
+            # Force kill if not terminated gracefully
+            process.kill()
+
+        _clear_service_pid()
+        logger.info("service_stopped", pid=pid)
+
+        return ServiceStopResponse(
+            success=True,
+            message="Service stopped successfully",
+        )
+
+    except psutil.NoSuchProcess:
+        _clear_service_pid()
+        return ServiceStopResponse(
+            success=True,
+            message="Service was not running",
+        )
+    except Exception as e:
+        logger.error("service_stop_failed", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to stop service: {str(e)}")
 
 
 @router.get("/llm-stats")
