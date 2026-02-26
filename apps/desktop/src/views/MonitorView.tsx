@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../stores/appStore";
 import {
@@ -13,7 +13,8 @@ import {
   Play,
   Square,
   Server,
-  FileText,
+  Terminal,
+  X,
 } from "lucide-react";
 
 interface SystemStatus {
@@ -50,6 +51,11 @@ interface ServiceStatus {
   uptime_seconds?: number;
   memory_mb?: number;
   cpu_percent?: number;
+  status?: string;  // running, sleeping, zombie, etc.
+  start_time?: string;  // ISO format
+  threads?: number;
+  open_files?: number;
+  connections?: number;
   logFile?: string;
 }
 
@@ -66,6 +72,7 @@ export function MonitorView({}: MonitorViewProps) {
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
   const [serviceLoading, setServiceLoading] = useState(false);
   const [filter, setFilter] = useState<"all" | "llm" | "tools" | "memory">("all");
+  const [showLogStream, setShowLogStream] = useState(false);
 
   // Fetch system status
   const fetchStatus = useCallback(async () => {
@@ -180,6 +187,14 @@ export function MonitorView({}: MonitorViewProps) {
             >
               <Download className="w-4 h-4" />
               {t("monitor.export", "导出")}
+            </button>
+            <button
+              onClick={() => setShowLogStream(true)}
+              className="px-3 py-1.5 rounded-lg border border-surface-el text-text-s hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-1.5"
+              title="实时日志流"
+            >
+              <Terminal className="w-4 h-4" />
+              <span className="text-xs">日志流</span>
             </button>
           </div>
         </div>
@@ -334,6 +349,9 @@ export function MonitorView({}: MonitorViewProps) {
           </div>
         </div>
       </div>
+
+      {/* Log Stream Panel */}
+      {showLogStream && <LogStreamPanel onClose={() => setShowLogStream(false)} />}
     </div>
   );
 }
@@ -354,9 +372,33 @@ function ServiceControlCard({
 }) {
   const isRunning = serviceStatus?.running ?? false;
 
+  // 格式化运行时间
+  const formatUptime = (seconds?: number) => {
+    if (!seconds) return '-';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return `${h}h ${m}m ${s}s`;
+  };
+
+  // 格式化启动时间
+  const formatStartTime = (startTime?: string) => {
+    if (!startTime) return '-';
+    try {
+      return new Date(startTime).toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return startTime;
+    }
+  };
+
   return (
     <div className="bg-surface border border-surface-el rounded-xl p-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${isRunning ? 'bg-accent/10' : 'bg-surface-el'}`}>
             <Server className={`w-5 h-5 ${isRunning ? 'text-accent' : 'text-text-m'}`} />
@@ -396,16 +438,46 @@ function ServiceControlCard({
               <Square className="w-4 h-4" /> {t("monitor.service.stop", "停止")}
             </button>
           )}
-          {serviceStatus?.logFile && (
-            <button
-              className="px-3 py-2 rounded-lg border border-surface-el text-text-s hover:bg-surface cursor-pointer transition-colors duration-200 flex items-center gap-1.5"
-              title={t("monitor.service.viewLogs", "查看日志")}
-            >
-              <FileText className="w-4 h-4" />
-            </button>
-          )}
         </div>
       </div>
+
+      {/* 进程详情信息 */}
+      {isRunning && serviceStatus && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-3 border-t border-surface-el">
+          <div className="bg-bg-base rounded-lg p-2">
+            <div className="text-xs text-text-s mb-1">运行时长</div>
+            <div className="text-sm font-code text-text-p">{formatUptime(serviceStatus.uptime_seconds)}</div>
+          </div>
+          <div className="bg-bg-base rounded-lg p-2">
+            <div className="text-xs text-text-s mb-1">启动时间</div>
+            <div className="text-sm font-code text-text-p">{formatStartTime(serviceStatus.start_time)}</div>
+          </div>
+          <div className="bg-bg-base rounded-lg p-2">
+            <div className="text-xs text-text-s mb-1">进程状态</div>
+            <div className="text-sm font-code text-text-p capitalize">{serviceStatus.status || '-'}</div>
+          </div>
+          <div className="bg-bg-base rounded-lg p-2">
+            <div className="text-xs text-text-s mb-1">CPU 使用</div>
+            <div className="text-sm font-code text-text-p">{serviceStatus.cpu_percent?.toFixed(1) || '-'}%</div>
+          </div>
+          <div className="bg-bg-base rounded-lg p-2">
+            <div className="text-xs text-text-s mb-1">内存使用</div>
+            <div className="text-sm font-code text-text-p">{serviceStatus.memory_mb?.toFixed(1) || '-'} MB</div>
+          </div>
+          <div className="bg-bg-base rounded-lg p-2">
+            <div className="text-xs text-text-s mb-1">线程数</div>
+            <div className="text-sm font-code text-text-p">{serviceStatus.threads || '-'}</div>
+          </div>
+          <div className="bg-bg-base rounded-lg p-2">
+            <div className="text-xs text-text-s mb-1">打开文件</div>
+            <div className="text-sm font-code text-text-p">{serviceStatus.open_files || '-'}</div>
+          </div>
+          <div className="bg-bg-base rounded-lg p-2">
+            <div className="text-xs text-text-s mb-1">网络连接</div>
+            <div className="text-sm font-code text-text-p">{serviceStatus.connections || '-'}</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -439,6 +511,169 @@ function ResourceBar({ label, value, percentage, color }: {
           className={`h-full ${color} transition-all duration-300`}
           style={{ width: `${Math.min(percentage, 100)}%` }}
         />
+      </div>
+    </div>
+  );
+}
+
+// 日志条目类型
+interface LogEntry {
+  timestamp: string;
+  level: "DEBUG" | "INFO" | "WARNING" | "ERROR";
+  message: string;
+  [key: string]: unknown;
+}
+
+// 实时日志流组件
+function LogStreamPanel({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [filterLevel, setFilterLevel] = useState<string>("all");
+  const [connected, setConnected] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // 自动滚动到底部
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs]);
+
+  useEffect(() => {
+    // 连接 SSE 流
+    const eventSource = new EventSource("http://127.0.0.1:8420/api/logs/stream");
+
+    eventSource.onopen = () => {
+      setConnected(true);
+      console.log("Log stream connected");
+    };
+
+    eventSource.addEventListener("log", (event) => {
+      try {
+        const logEntry: LogEntry = JSON.parse(event.data);
+        setLogs((prev) => [...prev.slice(-99), logEntry]); // 保留最新 100 条
+      } catch (e) {
+        console.error("Failed to parse log entry:", e);
+      }
+    });
+
+    eventSource.addEventListener("connected", (event) => {
+      console.log("Stream status:", event.data);
+    });
+
+    eventSource.onerror = (error) => {
+      console.error("Log stream error:", error);
+      setConnected(false);
+      eventSource.close();
+    };
+
+    eventSourceRef.current = eventSource;
+
+    return () => {
+      eventSource.close();
+    };
+  }, []);
+
+  const filteredLogs = filterLevel === "all"
+    ? logs
+    : logs.filter((log) => log.level === filterLevel);
+
+  const getLevelColor = (level: string) => {
+    switch (level) {
+      case "DEBUG": return "text-text-s";
+      case "INFO": return "text-info";
+      case "WARNING": return "text-warning";
+      case "ERROR": return "text-rose-500";
+      default: return "text-text-p";
+    }
+  };
+
+  const getLevelBg = (level: string) => {
+    switch (level) {
+      case "DEBUG": return "bg-bg-base";
+      case "INFO": return "bg-info/10";
+      case "WARNING": return "bg-warning/10";
+      case "ERROR": return "bg-rose-500/10";
+      default: return "bg-surface";
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-bg-deep rounded-xl border border-surface w-full max-w-4xl max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-surface">
+          <div className="flex items-center gap-3">
+            <Terminal className="w-5 h-5 text-accent" />
+            <h2 className="text-lg font-semibold text-text-p">实时日志流</h2>
+            <span className={`text-xs px-2 py-0.5 rounded-full ${connected ? "bg-accent/20 text-accent" : "bg-text-m/20 text-text-m"}`}>
+              {connected ? "已连接" : "未连接"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Level Filter */}
+            <select
+              value={filterLevel}
+              onChange={(e) => setFilterLevel(e.target.value)}
+              className="px-2 py-1 bg-bg-base border border-surface rounded text-xs text-text-s focus:outline-none focus:border-accent"
+            >
+              <option value="all">全部</option>
+              <option value="DEBUG">DEBUG</option>
+              <option value="INFO">INFO</option>
+              <option value="WARNING">WARNING</option>
+              <option value="ERROR">ERROR</option>
+            </select>
+            <button
+              onClick={() => setLogs([])}
+              className="p-1.5 text-text-s hover:bg-bg-base rounded transition-colors"
+              title="清空日志"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1.5 text-text-s hover:bg-bg-base rounded transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Log Content */}
+        <div className="flex-1 overflow-auto p-4 font-mono text-xs bg-bg-base">
+          {filteredLogs.length === 0 ? (
+            <div className="text-center text-text-s py-8">
+              <Terminal className="w-12 h-12 mx-auto mb-2 opacity-20" />
+              <p>等待日志...</p>
+            </div>
+          ) : (
+            <div className="space-y-0.5">
+              {filteredLogs.map((log, index) => (
+                <div
+                  key={index}
+                  className={`px-2 py-1 rounded ${getLevelBg(log.level)} hover:bg-surface-el/50`}
+                >
+                  <span className="text-text-s mr-2">
+                    {new Date(log.timestamp).toLocaleTimeString()}
+                  </span>
+                  <span className={`font-semibold mr-2 ${getLevelColor(log.level)}`}>
+                    {log.level}
+                  </span>
+                  <span className="text-text-p">{log.message}</span>
+                </div>
+              ))}
+              <div ref={logsEndRef} />
+            </div>
+          )}
+        </div>
+
+        {/* Footer Stats */}
+        <div className="px-4 py-2 border-t border-surface flex items-center justify-between text-xs text-text-s">
+          <span>显示 {filteredLogs.length} / {logs.length} 条日志</span>
+          <span className="font-code">SSE 实时流</span>
+        </div>
       </div>
     </div>
   );

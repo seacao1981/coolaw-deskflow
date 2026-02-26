@@ -10,6 +10,7 @@ import ChatView from "./views/ChatView";
 import SkillsView from "./views/SkillsView";
 import { MonitorView } from "./views/MonitorView";
 import SettingsView from "./views/SettingsView";
+import { IMChannelsView } from "./views/IMChannelsView";
 
 function App() {
   const currentView = useAppStore((s) => s.currentView);
@@ -69,6 +70,7 @@ function App() {
         <main className="flex-1 flex flex-col overflow-hidden">
           {currentView === "chat" && <ChatView />}
           {currentView === "skills" && <SkillsView />}
+          {currentView === "imchannels" && <IMChannelsView />}
           {currentView === "monitor" && <MonitorView />}
           {currentView === "settings" && <SettingsView />}
         </main>

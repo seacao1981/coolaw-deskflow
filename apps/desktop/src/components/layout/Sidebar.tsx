@@ -6,6 +6,7 @@ import {
   User,
   Brain,
   PanelLeft,
+  MessagesSquare,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAppStore } from "../../stores/appStore";
@@ -20,6 +21,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { view: "chat", labelKey: "nav.chat", icon: <MessageSquare className="w-5 h-5" /> },
   { view: "skills", labelKey: "nav.skills", icon: <Puzzle className="w-5 h-5" /> },
+  { view: "imchannels", labelKey: "nav.imchannels", icon: <MessagesSquare className="w-5 h-5" /> },
   { view: "monitor", labelKey: "nav.monitor", icon: <Activity className="w-5 h-5" /> },
   { view: "settings", labelKey: "nav.settings", icon: <Settings className="w-5 h-5" /> },
 ];

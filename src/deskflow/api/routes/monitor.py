@@ -109,14 +109,35 @@ def _clear_service_pid() -> None:
 
 
 def _get_process_info(pid: int) -> dict[str, Any] | None:
-    """Get process information."""
+    """Get detailed process information."""
     try:
         process = psutil.Process(pid)
+        # Get number of open files
+        try:
+            open_files = len(process.open_files())
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            open_files = 0
+
+        # Get number of connections
+        try:
+            connections = len(process.connections())
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            connections = 0
+
+        # Get number of threads
+        try:
+            threads = process.num_threads()
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            threads = 0
+
         return {
             "status": process.status(),
             "cpu_percent": process.cpu_percent(),
             "memory_mb": round(process.memory_info().rss / 1024 / 1024, 2),
             "create_time": datetime.fromtimestamp(process.create_time()).isoformat(),
+            "threads": threads,
+            "open_files": open_files,
+            "connections": connections,
         }
     except (psutil.NoSuchProcess, psutil.AccessDenied):
         return None
@@ -190,11 +211,16 @@ class ServiceStatusResponse(BaseModel):
     uptime_seconds: float | None = None
     memory_mb: float | None = None
     cpu_percent: float | None = None
+    status: str | None = None  # running, sleeping, zombie, etc.
+    start_time: str | None = None  # ISO format
+    threads: int | None = None  # number of threads
+    open_files: int | None = None  # number of open files
+    connections: int | None = None  # number of network connections
 
 
 @router.get("/service/status", response_model=ServiceStatusResponse)
 async def get_service_status():
-    """Get backend service status."""
+    """Get backend service status with detailed process information."""
     pid = _get_service_pid()
 
     if pid is None:
@@ -215,6 +241,11 @@ async def get_service_status():
         uptime_seconds=round(uptime_seconds, 2),
         memory_mb=process_info["memory_mb"],
         cpu_percent=process_info["cpu_percent"],
+        status=process_info["status"],
+        start_time=process_info["create_time"],
+        threads=process_info["threads"],
+        open_files=process_info["open_files"],
+        connections=process_info["connections"],
     )
 
 

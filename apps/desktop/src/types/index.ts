@@ -1,6 +1,6 @@
 /** Shared TypeScript types for the DeskFlow frontend. */
 
-export type ViewName = "chat" | "skills" | "monitor" | "settings";
+export type ViewName = "chat" | "skills" | "monitor" | "settings" | "imchannels";
 
 export interface StreamChunk {
   type: "conversation_id" | "text" | "tool_start" | "tool_end" | "tool_result" | "error" | "done";

@@ -1,8 +1,6 @@
 // Prevents additional console window on Windows in release builds
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::Manager;
-
 #[tauri::command]
 async fn check_backend_health() -> Result<String, String> {
     // Check if the Python backend is running on http://127.0.0.1:8420
@@ -30,10 +28,10 @@ fn main() {
             check_backend_health,
             get_backend_url
         ])
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(debug_assertions)]
             {
-                let window = app.get_webview_window("main").unwrap();
+                let window = _app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
             Ok(())

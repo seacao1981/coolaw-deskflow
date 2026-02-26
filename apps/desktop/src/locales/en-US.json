@@ -4,13 +4,14 @@
     "subtitle": "自进化 AI Agent 桌面"
   },
   "nav": {
-    "chat": "对话",
-    "skills": "技能",
-    "monitor": "监控",
-    "settings": "设置",
+    "chat": "Chat",
+    "skills": "Skills",
+    "monitor": "Monitor",
+    "settings": "Settings",
+    "imchannels": "IM Channels",
     "llm": "LLM",
-    "identity": "身份",
-    "user": "用户"
+    "identity": "Identity",
+    "user": "User"
   },
   "sidebar": {
     "collapse": "收起侧边栏",
